@@ -35,11 +35,16 @@ def fetch_binance():
         return [f"Binance fetch error: {e}"]
 
 def main():
+    print("🚀 Bot started")
     message_lines = []
     message_lines.extend(fetch_binance())
+    print(f"🔍 Alerts found: {len(message_lines)}")
     if message_lines:
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+        print("📬 Sending message to Telegram...")
         send_telegram_message(f"📊 Funding Rate Alerts ({now}):\n" + "\n".join(message_lines))
+    else:
+        print("😴 No funding rate alerts found.")
 
 if __name__ == "__main__":
     main()
