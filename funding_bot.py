@@ -1,8 +1,7 @@
-import os
 import requests
+import os
 from datetime import datetime
 
-# Telegram bot bilgileri ortam değişkenlerinden alınır
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -12,7 +11,7 @@ def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": message}
     response = requests.post(url, data=data)
-    print("Telegram response:", response.json())
+    print("Telegram response:", response.text)
 
 def fetch_binance():
     try:
@@ -21,16 +20,16 @@ def fetch_binance():
         for item in r:
             symbol = item["symbol"]
             rate = float(item["fundingRate"]) * 100
-            if abs(rate) >= 0.0:
-                color = "🟢"
-                if abs(rate) >= 1.5:
-                    color = "🔴"
-                elif abs(rate) >= 1.0:
-                    color = "🟠"
-                alerts.append(f"{color} {symbol} funding rate: {rate:.2f}%")
+            # TEST için tüm coin'leri dahil et
+            color = "🟢"
+            if abs(rate) >= 1.5:
+                color = "🔴"
+            elif abs(rate) >= 1.0:
+                color = "🟠"
+            alerts.append(f"{color} {symbol} funding rate: {rate:.2f}%")
         return alerts
     except Exception as e:
-        return [f"❌ Binance fetch error: {e}"]
+        return [f"Binance fetch error: {e}"]
 
 def main():
     print("✅ Script started")
