@@ -1,0 +1,7 @@
+{
+  "build": {
+    "env": "python",
+    "buildCommand": "pip install -r requirements.txt"
+  },
+  "start": "echo 'No start script needed — running via schedule only'"
+}
