@@ -51,3 +51,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    send_telegram_message("🚨 Bot Test: Funding Rate script aktif!")
+
