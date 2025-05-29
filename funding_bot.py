@@ -35,7 +35,6 @@ def fetch_binance():
         return [f"Binance fetch error: {e}"]
 
 def main():
-    def main():
     print("✅ Script started")
     try:
         message_lines = fetch_binance()
