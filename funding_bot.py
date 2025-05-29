@@ -23,7 +23,7 @@ def fetch_binance():
         for item in r:
             symbol = item["symbol"]
             rate = float(item["fundingRate"]) * 100
-            if abs(rate) >= 0.5:
+            if abs(rate) >= 0.1:
                 color = "🟢"
                 if abs(rate) >= 1.5:
                     color = "🔴"
