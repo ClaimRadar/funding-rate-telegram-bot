@@ -14,6 +14,26 @@ def send_telegram_message(message, user_chat_id):
 
 def fetch_binance(user_id, tracked_coins):
     # ... daha önce yazdığımız binance kodu ...
+    from datetime import datetime, timedelta
+
+def get_funding_countdown():
+    now = datetime.utcnow()
+    funding_times = [0, 8, 16]  # UTC saatleri
+
+    # Şu andan sonraki ilk funding saatini bul
+    for hour in funding_times:
+        funding_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+        if funding_time > now:
+            break
+    else:
+        # Yeni günün ilk funding saati
+        funding_time = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    remaining = funding_time - now
+    hours, remainder = divmod(remaining.seconds, 3600)
+    minutes = remainder // 60
+    return f"⏰ Next funding in: {hours}h {minutes}m"
+
 
 def fetch_okx(user_id, tracked_coins):
     try:
@@ -73,7 +93,8 @@ def main():
 
         if messages:
             now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-            msg = f"📊 Funding Rate Alerts ({now}):\n" + "\n".join(messages)
+            countdown = get_funding_countdown()
+    msg = f"📊 Funding Rate Alerts ({now})\n{countdown}\n\n" + "\n".join(messages)
             send_telegram_message(msg, user_id)
             print(f"✅ Sent to {user_id}: {len(messages)} alerts")
         else:
