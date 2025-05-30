@@ -1,6 +1,7 @@
 import requests
+import time
+from datetime import datetime, timezone
 import os
-from datetime import datetime
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -9,9 +10,13 @@ BINANCE_URL = "https://fapi.binance.com/fapi/v1/fundingRate?limit=100"
 
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": message}
+    data = {
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
     response = requests.post(url, data=data)
-    print("Telegram response:", response.text)
+    print("✅ Telegram response:", response.text)
 
 def fetch_binance():
     try:
@@ -20,30 +25,39 @@ def fetch_binance():
         for item in r:
             symbol = item["symbol"]
             rate = float(item["fundingRate"]) * 100
-            # TEST için tüm coin'leri dahil et
-            color = "🟢"
-            if abs(rate) >= 1.5:
-                color = "🔴"
-            elif abs(rate) >= 1.0:
-                color = "🟠"
-            alerts.append(f"{color} {symbol} funding rate: {rate:.2f}%")
+            if abs(rate) >= 0.5:
+                color = "🟢"
+                if abs(rate) >= 1.5:
+                    color = "🔴"
+                elif abs(rate) >= 1.0:
+                    color = "🟠"
+                alerts.append({
+                    "symbol": symbol,
+                    "rate": rate,
+                    "color": color
+                })
         return alerts
     except Exception as e:
-        return [f"Binance fetch error: {e}"]
+        print("❌ Binance fetch error:", e)
+        return []
 
 def main():
-    print("✅ Script started")
-    try:
-        message_lines = fetch_binance()
-        print(f"✅ Alerts found: {len(message_lines)}")
-        if message_lines:
-            now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-            print("📬 Sending message to Telegram...")
-            send_telegram_message(f"📊 Funding Rate Alerts ({now}):\n" + "\n".join(message_lines))
-        else:
-            print("ℹ️ No alerts to send.")
-    except Exception as e:
-        print(f"❌ Exception occurred: {e}")
+    print("🚀 Script started")
+    alerts = fetch_binance()
+    print(f"📈 Alerts found: {len(alerts)}")
+    
+    for alert in alerts:
+        symbol = alert["symbol"]
+        rate = alert["rate"]
+        color = alert["color"]
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        message = (
+            f"{color} *{symbol}* funding rate alert!\n"
+            f"Rate: `{rate:.2f}%`\n"
+            f"Time: {now}"
+        )
+        send_telegram_message(message)
+        time.sleep(1)  # Telegram rate limit protection
 
 if __name__ == "__main__":
     main()
