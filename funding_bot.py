@@ -17,7 +17,7 @@ DERIBIT_URL = "https://www.deribit.com/api/v2/public/get_funding_chart_data?inst
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
-def send_telegram_message(message, chat_id=CHAT_ID):
+def send_telegram_message(message, chat_id):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
     requests.post(url, data=data)
@@ -119,6 +119,17 @@ async def removecoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def joinpremium(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("💎 Become a Premium Member:\nJoin here: https://t.me/YourChannelName")
+
+def alert_users():
+    data = load_user_data()
+    funding_data = fetch_all_funding()
+    funding_time = get_next_funding_time()
+    for user_id, info in data.items():
+        coins = info.get("coins", [])
+        for item in funding_data:
+            if item["symbol"] in coins:
+                msg = f"{item['color']} *{item['symbol']}* ({item['exchange']})\nFunding Rate: `{item['rate']:.2f}%`\nNext funding {funding_time}"
+                send_telegram_message(msg, chat_id=user_id)
 
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
