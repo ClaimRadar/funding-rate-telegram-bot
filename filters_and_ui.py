@@ -74,6 +74,9 @@ def fetch_bybit(user_id, tracked_coins):
         return alerts
     except Exception as e:
         return [f"Bybit fetch error: {e}"]
+        if not alerts:
+    alerts = ["⚠️ No data available from Bybit."]
+
 
 
 def main():
