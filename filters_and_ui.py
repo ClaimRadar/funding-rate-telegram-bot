@@ -1,45 +1,55 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-import json
+import requests
+from datetime import datetime
 import os
+from filters_and_ui import load_user_data  # 👈 yeni eklendi
 
-USER_DATA_FILE = "user_data.json"
-PREMIUM_LINK = "https://t.me/joinchat/premium-link"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+BINANCE_URL = "https://fapi.binance.com/fapi/v1/fundingRate?limit=100"
 
-def load_user_data():
-    if not os.path.exists(USER_DATA_FILE):
-        return {}
-    with open(USER_DATA_FILE, "r") as f:
-        return json.load(f)
+def send_telegram_message(message, user_chat_id):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    data = {"chat_id": user_chat_id, "text": message}
+    requests.post(url, data=data)
 
-def save_user_data(data):
-    with open(USER_DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+def fetch_binance(user_id, tracked_coins):
+    try:
+        r = requests.get(BINANCE_URL).json()
+        alerts = []
+        for item in r:
+            symbol = item["symbol"]
+            if symbol not in tracked_coins:
+                continue  # ⛔ sadece kullanıcının izlediği coin'ler
+            rate = float(item["fundingRate"]) * 100
+            if abs(rate) >= 0.5:
+                color = "🟢"
+                if abs(rate) >= 1.5:
+                    color = "🔴"
+                elif abs(rate) >= 1.0:
+                    color = "🟠"
+                alerts.append(f"{color} {symbol} funding rate: {rate:.2f}%")
+        return alerts
+    except Exception as e:
+        return [f"Binance fetch error: {e}"]
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Welcome to the Funding Rate Bot!\nUse /addcoin BTCUSDT to start tracking coins.")
+def main():
+    print("✅ Script started")
 
-async def addcoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    coin = " ".join(context.args).upper()
-    if not coin:
-        await update.message.reply_text("❌ Please specify a coin symbol. Example: /addcoin PEPEUSDT")
+    # 🔄 Tüm kullanıcıları al
+    user_data = load_user_data()
+    if not user_data:
+        print("No users found.")
         return
-    data = load_user_data()
-    data.setdefault(user_id, [])
-    if coin not in data[user_id]:
-        data[user_id].append(coin)
-        save_user_data(data)
-        await update.message.reply_text(f"✅ {coin} has been added to your list.")
-    else:
-        await update.message.reply_text(f"ℹ️ {coin} is already in your list.")
 
-async def removecoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    coin = " ".join(context.args).upper()
-    data = load_user_data()
-    if user_id in data and coin in data[user_id]:
-        data[user_id].remove(coin)
-        save_user_data(data)
-        await update.message.reply_text(f"🗑️ {coin} has been removed from your list.")
-    e
+    for user_id, tracked_coins in user_data.items():
+        alerts = fetch_binance(user_id, tracked_coins)
+        if alerts:
+            now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+            msg = f"📊 Funding Rate Alerts ({now}):\n" + "\n".join(alerts)
+            send_telegram_message(msg, user_id)
+            print(f"✅ Sent to {user_id}: {len(alerts)} alerts")
+        else:
+            print(f"ℹ️ No alerts for {user_id}")
+
+if __name__ == "__main__":
+    main()
