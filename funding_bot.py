@@ -2,24 +2,25 @@ import requests
 import time
 from datetime import datetime, timedelta, timezone
 import os
+import json
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+USER_DATA_FILE = "user_data.json"
 
 BINANCE_URL = "https://fapi.binance.com/fapi/v1/fundingRate?limit=100"
 BYBIT_URL = "https://api.bybit.com/v5/market/funding/prev-funding-rate?category=linear"
 BITGET_URL = "https://api.bitget.com/api/mix/v1/market/funding-rate?productType=umcbl"
 DERIBIT_URL = "https://www.deribit.com/api/v2/public/get_funding_chart_data?instrument_name=BTC-PERPETUAL&start_timestamp=0"
 
-def send_telegram_message(message):
+bot = Bot(token=TELEGRAM_TOKEN)
+
+def send_telegram_message(message, chat_id=CHAT_ID):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
-    response = requests.post(url, data=data)
-    print("✅ Telegram response:", response.text)
+    data = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+    requests.post(url, data=data)
 
 def get_next_funding_time():
     now = datetime.now(timezone.utc)
@@ -30,104 +31,103 @@ def get_next_funding_time():
     delta = next_funding - now
     return f"in {delta.seconds // 3600}h {delta.seconds % 3600 // 60}m"
 
-def fetch_binance():
+def fetch_all_funding():
+    alerts = []
     try:
         r = requests.get(BINANCE_URL).json()
-        alerts = []
         for item in r:
             symbol = item["symbol"]
             rate = float(item["fundingRate"]) * 100
             if abs(rate) >= 0.5:
-                color = "🟢"
-                if abs(rate) >= 1.5:
-                    color = "🔴"
-                elif abs(rate) >= 1.0:
-                    color = "🟠"
+                color = "🟢" if abs(rate) < 1.0 else "🟠" if abs(rate) < 1.5 else "🔴"
                 alerts.append({"symbol": symbol, "rate": rate, "color": color, "exchange": "Binance"})
-        return alerts
-    except Exception as e:
-        print("❌ Binance fetch error:", e)
-        return []
-
-def fetch_bybit():
+    except: pass
     try:
-        r = requests.get(BYBIT_URL).json()
-        items = r.get("result", {}).get("list", [])
-        alerts = []
-        for item in items:
+        r = requests.get(BYBIT_URL).json().get("result", {}).get("list", [])
+        for item in r:
             symbol = item["symbol"]
             rate = float(item["fundingRate"]) * 100
             if abs(rate) >= 0.5:
-                color = "🟢"
-                if abs(rate) >= 1.5:
-                    color = "🔴"
-                elif abs(rate) >= 1.0:
-                    color = "🟠"
+                color = "🟢" if abs(rate) < 1.0 else "🟠" if abs(rate) < 1.5 else "🔴"
                 alerts.append({"symbol": symbol, "rate": rate, "color": color, "exchange": "Bybit"})
-        return alerts
-    except Exception as e:
-        print("❌ Bybit fetch error:", e)
-        return []
-
-def fetch_bitget():
+    except: pass
     try:
-        r = requests.get(BITGET_URL).json()
-        items = r.get("data", [])
-        alerts = []
-        for item in items:
+        r = requests.get(BITGET_URL).json().get("data", [])
+        for item in r:
             symbol = item["symbol"]
             rate = float(item["fundingRate"])*100
             if abs(rate) >= 0.5:
-                color = "🟢"
-                if abs(rate) >= 1.5:
-                    color = "🔴"
-                elif abs(rate) >= 1.0:
-                    color = "🟠"
+                color = "🟢" if abs(rate) < 1.0 else "🟠" if abs(rate) < 1.5 else "🔴"
                 alerts.append({"symbol": symbol, "rate": rate, "color": color, "exchange": "Bitget"})
-        return alerts
-    except Exception as e:
-        print("❌ Bitget fetch error:", e)
-        return []
-
-def fetch_deribit():
+    except: pass
     try:
-        r = requests.get(DERIBIT_URL).json()
-        entries = r.get("result", {}).get("data", [])
-        if entries:
-            rate = entries[-1][1]*100
+        r = requests.get(DERIBIT_URL).json().get("result", {}).get("data", [])
+        if r:
+            rate = r[-1][1]*100
             if abs(rate) >= 0.5:
-                color = "🟢"
-                if abs(rate) >= 1.5:
-                    color = "🔴"
-                elif abs(rate) >= 1.0:
-                    color = "🟠"
-                return [{"symbol": "BTC-PERP", "rate": rate, "color": color, "exchange": "Deribit"}]
-        return []
-    except Exception as e:
-        print("❌ Deribit fetch error:", e)
-        return []
+                color = "🟢" if abs(rate) < 1.0 else "🟠" if abs(rate) < 1.5 else "🔴"
+                alerts.append({"symbol": "BTC-PERP", "rate": rate, "color": color, "exchange": "Deribit"})
+    except: pass
+    return alerts
+
+def load_user_data():
+    if not os.path.exists(USER_DATA_FILE):
+        return {}
+    with open(USER_DATA_FILE, "r") as f:
+        return json.load(f)
+
+def save_user_data(data):
+    with open(USER_DATA_FILE, "w") as f:
+        json.dump(data, f)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Welcome to Funding Radar Bot!\n\nUse /addcoin <SYMBOL> to watch a coin.\nUse /listcoins to see your watchlist.\nUse /joinpremium to unlock more features.")
+
+async def addcoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    symbol = context.args[0].upper() if context.args else None
+    if not symbol:
+        return await update.message.reply_text("❗ Usage: /addcoin SYMBOL")
+    data = load_user_data()
+    data.setdefault(user_id, {"coins": [], "premium": False})
+    if symbol not in data[user_id]["coins"]:
+        data[user_id]["coins"].append(symbol)
+        save_user_data(data)
+    await update.message.reply_text(f"✅ {symbol} added to your watchlist!")
+
+async def listcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    data = load_user_data()
+    coins = data.get(user_id, {}).get("coins", [])
+    if coins:
+        await update.message.reply_text("👀 Your watchlist:\n" + "\n".join(coins))
+    else:
+        await update.message.reply_text("ℹ️ You haven't added any coins yet.")
+
+async def removecoin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    symbol = context.args[0].upper() if context.args else None
+    if not symbol:
+        return await update.message.reply_text("❗ Usage: /removecoin SYMBOL")
+    data = load_user_data()
+    if user_id in data and symbol in data[user_id]["coins"]:
+        data[user_id]["coins"].remove(symbol)
+        save_user_data(data)
+        await update.message.reply_text(f"✅ {symbol} removed from your watchlist.")
+    else:
+        await update.message.reply_text("❌ Symbol not found in your watchlist.")
+
+async def joinpremium(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("💎 Become a Premium Member:\nJoin here: https://t.me/YourChannelName")
 
 def main():
-    print("🚀 Script started")
-    alerts = fetch_binance() + fetch_bybit() + fetch_bitget() + fetch_deribit()
-    print(f"📈 Total alerts found: {len(alerts)}")
-
-    funding_time = get_next_funding_time()
-
-    for alert in alerts:
-        symbol = alert["symbol"]
-        rate = alert["rate"]
-        color = alert["color"]
-        exchange = alert["exchange"]
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        message = (
-            f"{color} *{symbol}* ({exchange}) funding rate alert!\n"
-            f"Rate: `{rate:.2f}%`\n"
-            f"Time: {now}\n"
-            f"Next Funding: {funding_time}"
-        )
-        send_telegram_message(message)
-        time.sleep(1)
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("addcoin", addcoin))
+    app.add_handler(CommandHandler("listcoins", listcoins))
+    app.add_handler(CommandHandler("removecoin", removecoin))
+    app.add_handler(CommandHandler("joinpremium", joinpremium))
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
